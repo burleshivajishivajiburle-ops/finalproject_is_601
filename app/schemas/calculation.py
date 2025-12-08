@@ -36,6 +36,11 @@ class CalculationType(str, Enum):
     SUBTRACTION = "subtraction"
     MULTIPLICATION = "multiplication"
     DIVISION = "division"
+    EXPONENTIATION = "exponentiation"
+    MODULUS = "modulus"
+    MINIMUM = "minimum"
+    MAXIMUM = "maximum"
+    AVERAGE = "average"
 
 class CalculationBase(BaseModel):
     """
