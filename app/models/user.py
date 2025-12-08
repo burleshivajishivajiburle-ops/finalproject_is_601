@@ -98,6 +98,9 @@ class User(Base):
     last_login = Column(DateTime(timezone=True), 
                         nullable=True)  # Track login activity
     
+    password_updated_at = Column(DateTime(timezone=True),
+                                 nullable=True)  # Track password changes
+    
     # Relationships - one-to-many with Calculation model
     calculations = relationship("Calculation", 
                                back_populates="user", 
@@ -291,3 +294,78 @@ class User(Base):
                 return None
         except JWTError:
             return None
+
+    def update_profile(self, db, profile_data: dict):
+        """
+        Update user profile information.
+        
+        Args:
+            db: SQLAlchemy database session
+            profile_data: Dictionary containing profile fields to update
+            
+        Returns:
+            User: The updated user instance
+            
+        Raises:
+            ValueError: If username/email already exists for another user
+        """
+        # Check if username is being updated and if it's already taken
+        if "username" in profile_data and profile_data["username"] != self.username:
+            existing = db.query(User).filter(
+                User.username == profile_data["username"],
+                User.id != self.id
+            ).first()
+            if existing:
+                raise ValueError("Username already exists")
+            self.username = profile_data["username"]
+        
+        # Check if email is being updated and if it's already taken
+        if "email" in profile_data and profile_data["email"] != self.email:
+            existing = db.query(User).filter(
+                User.email == profile_data["email"],
+                User.id != self.id
+            ).first()
+            if existing:
+                raise ValueError("Email already exists")
+            self.email = profile_data["email"]
+        
+        # Update other allowed fields
+        if "first_name" in profile_data:
+            self.first_name = profile_data["first_name"]
+        if "last_name" in profile_data:
+            self.last_name = profile_data["last_name"]
+        
+        self.updated_at = utcnow()
+        return self
+
+    def change_password(self, db, old_password: str, new_password: str):
+        """
+        Change user password with validation.
+        
+        Args:
+            db: SQLAlchemy database session
+            old_password: Current password for verification
+            new_password: New password to set
+            
+        Returns:
+            User: The updated user instance
+            
+        Raises:
+            ValueError: If old password is incorrect or new password is invalid
+        """
+        # Verify old password
+        if not self.verify_password(old_password):
+            raise ValueError("Current password is incorrect")
+        
+        # Validate new password
+        if not new_password or len(new_password) < 6:
+            raise ValueError("New password must be at least 6 characters long")
+        
+        if new_password == old_password:
+            raise ValueError("New password must be different from current password")
+        
+        # Update password
+        self.password = self.hash_password(new_password)
+        self.password_updated_at = utcnow()
+        self.updated_at = utcnow()
+        return self
