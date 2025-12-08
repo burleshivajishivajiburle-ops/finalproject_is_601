@@ -178,6 +178,11 @@ class AbstractCalculation:
             'subtraction': Subtraction,
             'multiplication': Multiplication,
             'division': Division,
+            'exponentiation': Exponentiation,
+            'modulus': Modulus,
+            'minimum': Minimum,
+            'maximum': Maximum,
+            'average': Average,
         }
         calculation_class = calculation_classes.get(calculation_type.lower())
         if not calculation_class:
@@ -354,3 +359,162 @@ class Division(Calculation):
                 raise ValueError("Cannot divide by zero.")
             result /= value
         return result
+
+class Exponentiation(Calculation):
+    """
+    Exponentiation calculation subclass.
+    
+    Raises the first number to the power of the second number.
+    For multiple inputs, applies exponentiation left to right.
+    Examples:
+        [2, 3] -> 2 ** 3 = 8
+        [2, 3, 2] -> (2 ** 3) ** 2 = 64
+        [5, 2] -> 5 ** 2 = 25
+    """
+    __mapper_args__ = {"polymorphic_identity": "exponentiation"}
+
+    def get_result(self) -> float:
+        """
+        Calculate exponentiation result.
+        
+        Raises the first value to the power of subsequent values sequentially.
+        
+        Returns:
+            float: The result of the exponentiation
+            
+        Raises:
+            ValueError: If inputs are not a list or if fewer than 2 numbers provided
+        """
+        if not isinstance(self.inputs, list):
+            raise ValueError("Inputs must be a list of numbers.")
+        if len(self.inputs) < 2:
+            raise ValueError("Inputs must be a list with at least two numbers.")
+        result = self.inputs[0]
+        for value in self.inputs[1:]:
+            result = result ** value
+        return result
+
+class Modulus(Calculation):
+    """
+    Modulus calculation subclass.
+    
+    Calculates the remainder of dividing the first number by the second.
+    For multiple inputs, applies modulus operation left to right.
+    Examples:
+        [10, 3] -> 10 % 3 = 1
+        [100, 30, 7] -> (100 % 30) % 7 = 10 % 7 = 3
+        [17, 5] -> 17 % 5 = 2
+        
+    Special case handling:
+        - Modulus by zero raises a ValueError
+    """
+    __mapper_args__ = {"polymorphic_identity": "modulus"}
+
+    def get_result(self) -> float:
+        """
+        Calculate modulus result.
+        
+        Takes the first number and applies modulus with all remaining numbers sequentially.
+        Includes validation to prevent modulus by zero.
+        
+        Returns:
+            float: The result of the modulus operation
+            
+        Raises:
+            ValueError: If inputs are not a list, if fewer than 2 numbers provided,
+                        or if attempting modulus by zero
+        """
+        if not isinstance(self.inputs, list):
+            raise ValueError("Inputs must be a list of numbers.")
+        if len(self.inputs) < 2:
+            raise ValueError("Inputs must be a list with at least two numbers.")
+        result = self.inputs[0]
+        for value in self.inputs[1:]:
+            if value == 0:
+                raise ValueError("Cannot perform modulus by zero.")
+            result = result % value
+        return result
+
+class Minimum(Calculation):
+    """
+    Minimum calculation subclass.
+    
+    Finds the smallest value from the input list.
+    Examples:
+        [5, 2, 9, 1] -> 1
+        [10, -5, 3] -> -5
+        [7.5, 3.2, 9.1] -> 3.2
+    """
+    __mapper_args__ = {"polymorphic_identity": "minimum"}
+
+    def get_result(self) -> float:
+        """
+        Find the minimum value from inputs.
+        
+        Returns:
+            float: The smallest value in the input list
+            
+        Raises:
+            ValueError: If inputs are not a list or if fewer than 2 numbers provided
+        """
+        if not isinstance(self.inputs, list):
+            raise ValueError("Inputs must be a list of numbers.")
+        if len(self.inputs) < 2:
+            raise ValueError("Inputs must be a list with at least two numbers.")
+        return min(self.inputs)
+
+class Maximum(Calculation):
+    """
+    Maximum calculation subclass.
+    
+    Finds the largest value from the input list.
+    Examples:
+        [5, 2, 9, 1] -> 9
+        [10, -5, 3] -> 10
+        [7.5, 3.2, 9.1] -> 9.1
+    """
+    __mapper_args__ = {"polymorphic_identity": "maximum"}
+
+    def get_result(self) -> float:
+        """
+        Find the maximum value from inputs.
+        
+        Returns:
+            float: The largest value in the input list
+            
+        Raises:
+            ValueError: If inputs are not a list or if fewer than 2 numbers provided
+        """
+        if not isinstance(self.inputs, list):
+            raise ValueError("Inputs must be a list of numbers.")
+        if len(self.inputs) < 2:
+            raise ValueError("Inputs must be a list with at least two numbers.")
+        return max(self.inputs)
+
+class Average(Calculation):
+    """
+    Average (arithmetic mean) calculation subclass.
+    
+    Calculates the average (mean) of all input values.
+    Examples:
+        [10, 20, 30] -> (10+20+30)/3 = 20
+        [5, 15] -> (5+15)/2 = 10
+        [2, 4, 6, 8] -> (2+4+6+8)/4 = 5
+    """
+    __mapper_args__ = {"polymorphic_identity": "average"}
+
+    def get_result(self) -> float:
+        """
+        Calculate the arithmetic mean of inputs.
+        
+        Returns:
+            float: The average (mean) of all input values
+            
+        Raises:
+            ValueError: If inputs are not a list or if fewer than 2 numbers provided
+        """
+        if not isinstance(self.inputs, list):
+            raise ValueError("Inputs must be a list of numbers.")
+        if len(self.inputs) < 2:
+            raise ValueError("Inputs must be a list with at least two numbers.")
+        return sum(self.inputs) / len(self.inputs)
