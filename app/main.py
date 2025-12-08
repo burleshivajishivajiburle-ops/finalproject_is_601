@@ -32,12 +32,12 @@ from sqlalchemy.orm import Session  # SQLAlchemy database session
 import uvicorn  # ASGI server for running FastAPI apps
 
 # Application imports
-from app.auth.dependencies import get_current_active_user  # Authentication dependency
+from app.auth.dependencies import get_current_active_user, get_current_active_user_from_db  # Authentication dependencies
 from app.models.calculation import Calculation  # Database model for calculations
 from app.models.user import User  # Database model for users
 from app.schemas.calculation import CalculationBase, CalculationResponse, CalculationUpdate  # API request/response schemas
 from app.schemas.token import TokenResponse  # API token schema
-from app.schemas.user import UserCreate, UserResponse, UserLogin  # User schemas
+from app.schemas.user import UserCreate, UserResponse, UserLogin, UserUpdate, PasswordUpdate  # User schemas
 from app.database import Base, get_db, engine  # Database connection
 
 
@@ -69,6 +69,36 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan  # Pass our lifespan context manager
 )
+
+# ------------------------------------------------------------------------------
+# Exception Handler for Internal Server Errors
+# ------------------------------------------------------------------------------
+@app.exception_handler(500)
+async def internal_server_error_handler(request: Request, exc: Exception):
+    """
+    Global exception handler to return JSON for all 500 errors.
+    This ensures frontend JavaScript can properly parse error responses.
+    """
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """
+    Catch-all exception handler for any unhandled exceptions.
+    Returns JSON response instead of HTML error page.
+    """
+    import traceback
+    error_detail = str(exc)
+    print(f"Unhandled exception: {error_detail}")
+    print(traceback.format_exc())
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"An unexpected error occurred: {error_detail}"}
+    )
 
 # ------------------------------------------------------------------------------
 # Static Files and Templates Configuration
@@ -160,6 +190,25 @@ def edit_calculation_page(request: Request, calc_id: str):
         HTMLResponse: Rendered template with calculation ID passed to frontend
     """
     return templates.TemplateResponse("edit_calculation.html", {"request": request, "calc_id": calc_id})
+
+@app.get("/profile", response_class=HTMLResponse, tags=["web"])
+def profile_page(request: Request):
+    """
+    User profile management page.
+    
+    Allows users to view and update their profile information.
+    """
+    return templates.TemplateResponse("profile.html", {"request": request})
+
+@app.get("/change-password", response_class=HTMLResponse, tags=["web"])
+def change_password_page(request: Request):
+    """
+    Password change page.
+    
+    Allows users to change their password securely.
+    """
+    return templates.TemplateResponse("change_password.html", {"request": request})
+
 
 
 # ------------------------------------------------------------------------------
@@ -254,6 +303,74 @@ def login_form(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = D
         "access_token": auth_result["access_token"],
         "token_type": "bearer"
     }
+
+
+# ------------------------------------------------------------------------------
+# User Profile Management Endpoints
+# ------------------------------------------------------------------------------
+@app.get("/users/me", response_model=UserResponse, tags=["users"])
+def get_current_user_profile(
+    current_user: User = Depends(get_current_active_user_from_db)
+):
+    """
+    Get the current authenticated user's profile information.
+    """
+    return current_user
+
+@app.put("/users/me", response_model=UserResponse, tags=["users"])
+def update_user_profile(
+    profile_data: UserUpdate,
+    current_user: User = Depends(get_current_active_user_from_db),
+    db: Session = Depends(get_db)
+):
+    """
+    Update the current authenticated user's profile information.
+    Allows updating: first_name, last_name, email, username
+    """
+    try:
+        # Filter out None values to only update provided fields
+        update_data = profile_data.model_dump(exclude_unset=True)
+        if not update_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No fields provided for update"
+            )
+        
+        current_user.update_profile(db, update_data)
+        db.commit()
+        db.refresh(current_user)
+        return current_user
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@app.post("/users/me/change-password", status_code=status.HTTP_200_OK, tags=["users"])
+def change_user_password(
+    password_data: PasswordUpdate,
+    current_user: User = Depends(get_current_active_user_from_db),
+    db: Session = Depends(get_db)
+):
+    """
+    Change the current authenticated user's password.
+    Requires current password for verification.
+    """
+    try:
+        current_user.change_password(
+            db,
+            password_data.current_password,
+            password_data.new_password
+        )
+        db.commit()
+        return {"message": "Password changed successfully"}
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 # ------------------------------------------------------------------------------
