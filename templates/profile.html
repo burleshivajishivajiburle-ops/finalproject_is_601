@@ -1,0 +1,276 @@
+{% extends "layout.html" %}
+{% block title %}User Profile{% endblock %}
+
+{% block content %}
+<!-- Error/Success Alerts -->
+<div 
+  id="errorAlert" 
+  class="hidden bg-red-100 border border-red-500 text-red-800 
+         px-4 py-3 rounded-md mb-4 transition-all duration-300"
+>
+  <div class="flex items-center">
+    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+      <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+    </svg>
+    <span id="errorMessage" class="block sm:inline"></span>
+  </div>
+</div>
+<div 
+  id="successAlert" 
+  class="hidden bg-green-100 border border-green-500 text-green-800 
+         px-4 py-3 rounded-md mb-4 transition-all duration-300"
+>
+  <div class="flex items-center">
+    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+    </svg>
+    <span id="successMessage" class="block sm:inline"></span>
+  </div>
+</div>
+
+<!-- Profile Update Card -->
+<div 
+  class="bg-white shadow-lg rounded-lg p-6 
+         transition-all duration-300 hover:shadow-xl border border-gray-100"
+>
+  <h2 class="text-2xl font-bold mb-6 text-gray-800 flex items-center">
+    <svg class="w-6 h-6 mr-2 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+    </svg>
+    Update Profile Information
+  </h2>
+  
+  <form id="profileForm" class="space-y-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <!-- First Name -->
+      <div>
+        <label for="firstName" class="block text-sm font-medium text-gray-700 mb-1">
+          First Name
+        </label>
+        <input 
+          type="text" 
+          id="firstName" 
+          name="first_name" 
+          class="block w-full rounded-md border-gray-300 shadow-sm 
+                 focus:border-blue-500 focus:ring-blue-500 py-2 px-3"
+          placeholder="John"
+          required
+        />
+      </div>
+      
+      <!-- Last Name -->
+      <div>
+        <label for="lastName" class="block text-sm font-medium text-gray-700 mb-1">
+          Last Name
+        </label>
+        <input 
+          type="text" 
+          id="lastName" 
+          name="last_name" 
+          class="block w-full rounded-md border-gray-300 shadow-sm 
+                 focus:border-blue-500 focus:ring-blue-500 py-2 px-3"
+          placeholder="Doe"
+          required
+        />
+      </div>
+      
+      <!-- Username -->
+      <div>
+        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
+          Username
+        </label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          class="block w-full rounded-md border-gray-300 shadow-sm 
+                 focus:border-blue-500 focus:ring-blue-500 py-2 px-3"
+          placeholder="johndoe"
+          required
+          minlength="3"
+        />
+      </div>
+      
+      <!-- Email -->
+      <div>
+        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+          Email Address
+        </label>
+        <input 
+          type="email" 
+          id="email" 
+          name="email" 
+          class="block w-full rounded-md border-gray-300 shadow-sm 
+                 focus:border-blue-500 focus:ring-blue-500 py-2 px-3"
+          placeholder="john.doe@example.com"
+          required
+        />
+      </div>
+    </div>
+    
+    <div class="pt-2 flex space-x-3">
+      <button 
+        type="submit" 
+        id="submitBtn"
+        class="bg-blue-700 text-white px-6 py-2 
+              rounded-md hover:bg-blue-800 transition-colors duration-200
+              focus:outline-none focus:ring-2 focus:ring-offset-2 
+              focus:ring-blue-500 font-medium flex items-center"
+      >
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        Update Profile
+      </button>
+      
+      <a 
+        href="/dashboard"
+        class="bg-gray-500 text-white px-6 py-2 
+              rounded-md hover:bg-gray-600 transition-colors duration-200
+              focus:outline-none focus:ring-2 focus:ring-offset-2 
+              focus:ring-gray-500 font-medium flex items-center"
+      >
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+        </svg>
+        Back to Dashboard
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Check if user is logged in
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    window.location.href = '/login';
+    return;
+  }
+
+  // Alert helper functions
+  function showError(msg) {
+    const errorAlert = document.getElementById('errorAlert');
+    const errorMessage = document.getElementById('errorMessage');
+    errorMessage.textContent = msg;
+    errorAlert.classList.remove('hidden');
+    
+    setTimeout(() => {
+      errorAlert.classList.add('opacity-0');
+      setTimeout(() => {
+        errorAlert.classList.add('hidden');
+        errorAlert.classList.remove('opacity-0');
+      }, 300);
+    }, 5000);
+  }
+
+  function showSuccess(msg) {
+    const successAlert = document.getElementById('successAlert');
+    const successMessage = document.getElementById('successMessage');
+    successMessage.textContent = msg;
+    successAlert.classList.remove('hidden');
+    
+    setTimeout(() => {
+      successAlert.classList.add('opacity-0');
+      setTimeout(() => {
+        successAlert.classList.add('hidden');
+        successAlert.classList.remove('opacity-0');
+      }, 300);
+    }, 5000);
+  }
+
+  // Load current user profile
+  async function loadProfile() {
+    try {
+      const response = await fetch('/users/me', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.clear();
+          window.location.href = '/login';
+          return;
+        }
+        throw new Error('Failed to load profile');
+      }
+
+      const user = await response.json();
+      
+      // Populate form fields
+      document.getElementById('firstName').value = user.first_name || '';
+      document.getElementById('lastName').value = user.last_name || '';
+      document.getElementById('username').value = user.username || '';
+      document.getElementById('email').value = user.email || '';
+      
+    } catch (error) {
+      console.error('Error loading profile:', error);
+      showError('Failed to load profile information');
+    }
+  }
+
+  // Handle profile form submission
+  const profileForm = document.getElementById('profileForm');
+  profileForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const originalContent = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<svg class="animate-spin h-4 w-4 mr-2 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Updating...';
+    submitBtn.disabled = true;
+
+    const formData = {
+      first_name: document.getElementById('firstName').value.trim(),
+      last_name: document.getElementById('lastName').value.trim(),
+      username: document.getElementById('username').value.trim(),
+      email: document.getElementById('email').value.trim()
+    };
+
+    try {
+      const response = await fetch('/users/me', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Failed to update profile');
+      }
+
+      // Update localStorage with new username and first name
+      localStorage.setItem('username', data.username);
+      localStorage.setItem('first_name', data.first_name);
+      
+      showSuccess('Profile updated successfully!');
+      
+      // Update welcome message in header with first name
+      const welcomeElement = document.getElementById('layoutUserWelcome');
+      if (welcomeElement) {
+        welcomeElement.textContent = `Welcome, ${data.first_name}!`;
+      }
+      
+    } catch (error) {
+      console.error('Profile update error:', error);
+      showError(error.message);
+    } finally {
+      submitBtn.innerHTML = originalContent;
+      submitBtn.disabled = false;
+    }
+  });
+
+  // Load profile on page load
+  loadProfile();
+});
+</script>
+{% endblock %}
