@@ -1,3 +1,4 @@
+import os
 import socket
 import subprocess
 import sys
@@ -59,7 +60,6 @@ except ModuleNotFoundError:  # pragma: no cover - fallback when Faker isn't inst
     Faker.seed = staticmethod(lambda _: None)  # type: ignore[attr-defined]
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from playwright.sync_api import sync_playwright, Browser, Page
 
 from app.database import Base, get_engine, get_sessionmaker
 from app.models.user import User
@@ -81,7 +81,27 @@ logger = logging.getLogger(__name__)
 fake = Faker()
 Faker.seed(12345)
 
-test_engine = get_engine(database_url=settings.DATABASE_URL)
+# Configure test engine with SQLite-specific options to handle concurrent access
+from sqlalchemy import create_engine, event
+test_engine = create_engine(
+    settings.DATABASE_URL,
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 30,
+        "isolation_level": None  # Autocommit mode
+    },
+    poolclass=None,  # Disable pooling for tests to avoid connection issues
+    echo=False
+)
+
+# Enable WAL mode for better concurrency
+@event.listens_for(test_engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
+    cursor.close()
+
 TestingSessionLocal = get_sessionmaker(engine=test_engine)
 
 # ======================================================================================
@@ -135,16 +155,18 @@ class ServerStartupError(Exception):
 # ======================================================================================
 # Database Fixtures
 # ======================================================================================
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def setup_test_database(request):
     """
     Set up the test database before the session starts, and tear it down after tests
     unless --preserve-db is provided.
+    NOTE: This fixture is NOT autouse - it must be explicitly requested by tests
+    to avoid conflicts with the E2E server fixture.
     """
     logger.info("Setting up test database...")
     try:
-        Base.metadata.drop_all(bind=test_engine)
-        Base.metadata.create_all(bind=test_engine)
+        # Only create tables if they don't exist (avoid dropping to prevent locks)
+        Base.metadata.create_all(bind=test_engine, checkfirst=True)
         init_db()
         logger.info("Test database initialized.")
     except Exception as e:
@@ -158,10 +180,11 @@ def setup_test_database(request):
         drop_db()
 
 @pytest.fixture
-def db_session() -> Generator[Session, None, None]:
+def db_session(setup_test_database) -> Generator[Session, None, None]:
     """
     Provide a test-scoped database session. Commits after a successful test;
     rolls back if an exception occurs.
+    NOTE: Explicitly depends on setup_test_database to ensure DB is initialized.
     """
     session = TestingSessionLocal()
     try:
@@ -184,10 +207,15 @@ def fake_user_data() -> Dict[str, str]:
 @pytest.fixture
 def test_user(db_session: Session) -> User:
     """
-    Create and return a single test user in the database.
+    Create and return a single test user in the database with hashed password.
+    The password is set to 'TestPass123' for consistent testing.
     """
     user_data = create_fake_user()
-    user = User(**user_data)
+    # Use a consistent password for testing
+    user_data.pop("password")  # Remove random password
+    from app.models.user import User as UserModel
+    hashed_password = UserModel.hash_password("TestPass123")
+    user = User(**user_data, password=hashed_password)
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
@@ -223,7 +251,7 @@ def fastapi_server():
     is already in use, find another available port. Wait until the server is up
     before yielding its base URL.
     """
-    base_port = 8000
+    base_port = 5555  # Use different port to avoid conflicts
     server_url = f'http://127.0.0.1:{base_port}/'
 
     # Check if port is free; if not, pick an available port
@@ -235,6 +263,22 @@ def fastapi_server():
     logger.info(f"Starting FastAPI server on port {base_port}...")
 
     project_root = Path(__file__).resolve().parents[1]
+    
+    # Use environment variable to set a different database for E2E tests
+    env = os.environ.copy()
+    env['DATABASE_URL'] = 'sqlite:///test_e2e.db'
+    
+    # Clean up old database file before starting
+    test_db_path = project_root / "test_e2e.db"
+    for ext in ['', '-shm', '-wal']:
+        db_file = Path(str(test_db_path) + ext)
+        if db_file.exists():
+            try:
+                db_file.unlink()
+                logger.info(f"Cleaned up {db_file}")
+            except Exception as e:
+                logger.warning(f"Could not delete {db_file}: {e}")
+    
     uvicorn_cmd = [
         sys.executable,
         "-m",
@@ -246,21 +290,22 @@ def fastapi_server():
         str(base_port),
     ]
 
+    # Use DEVNULL for both stdout and stderr to avoid blocking
     process = subprocess.Popen(
         uvicorn_cmd,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-        cwd=str(project_root)
+        stderr=subprocess.DEVNULL,
+        cwd=str(project_root),
+        env=env
     )
 
     # IMPORTANT: Use the /health endpoint for the check!
     health_url = f"{server_url}health"
     if not wait_for_server(health_url, timeout=30):
-        stderr = process.stderr.read()
-        logger.error(f"Server failed to start. Uvicorn error: {stderr}")
+        logger.error(f"Server failed to start on {health_url}")
         process.terminate()
-        raise ServerStartupError(f"Failed to start test server on {health_url}")
+        process.wait(timeout=5)
+        raise ServerStartupError(f"Failed to start test server on {health_url}. Check if port {base_port} is available.")
 
     logger.info(f"Test server running on {server_url}.")
     yield server_url
@@ -273,11 +318,16 @@ def fastapi_server():
     except subprocess.TimeoutExpired:
         process.kill()
         logger.warning("Test server forcefully stopped.")
-
-    if process.stderr:
-        stderr_output = process.stderr.read().strip()
-        if stderr_output:
-            logger.error("FastAPI server stderr:\n%s", stderr_output)
+    
+    # Clean up test database after tests
+    test_db_path = project_root / "test_e2e.db"
+    for ext in ['', '-shm', '-wal']:
+        db_file = Path(str(test_db_path) + ext)
+        if db_file.exists():
+            try:
+                db_file.unlink()
+            except Exception:
+                pass
 
 # ======================================================================================
 # Playwright Fixtures for UI Testing
@@ -285,6 +335,8 @@ def fastapi_server():
 @pytest.fixture(scope="session")
 def browser_context():
     """Provide a Playwright browser context for UI tests (session-scoped)."""
+    from playwright.sync_api import sync_playwright
+    
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
             headless=True,
@@ -298,7 +350,7 @@ def browser_context():
             browser.close()
 
 @pytest.fixture
-def page(browser_context: Browser):
+def page(browser_context):
     """
     Provide a new browser page for each test, with a standard viewport.
     Closes the page and context after each test.
@@ -315,6 +367,79 @@ def page(browser_context: Browser):
         logger.info("Closing browser page and context.")
         page.close()
         context.close()
+
+@pytest.fixture(scope="session")
+def base_url(fastapi_server):
+    """
+    Provide the base URL for E2E tests.
+    Depends on fastapi_server fixture to ensure server is running.
+    """
+    return fastapi_server
+
+@pytest.fixture
+def test_user_credentials(base_url):
+    """
+    Create a test user via API and return credentials for E2E tests.
+    This fixture registers a user through the running E2E server.
+    If user already exists (e.g., testing against external server), try to use them.
+    """
+    import requests
+    from faker import Faker
+    import time
+    fake = Faker()
+    
+    # Use a timestamp-based username to avoid collisions
+    timestamp = int(time.time())
+    username = f"testuser{timestamp}"
+    email = f"test{timestamp}@example.com"
+    password = "TestPass123!"
+    
+    # Ensure base_url ends with /
+    url = base_url if base_url.endswith('/') else f"{base_url}/"
+    
+    # Register user through API
+    response = requests.post(
+        f"{url}auth/register",
+        json={
+            "first_name": "Test",
+            "last_name": "User",
+            "email": email,
+            "username": username,
+            "password": password,
+            "confirm_password": password
+        }
+    )
+    
+    if response.status_code not in [200, 201]:
+        # If user exists, that's okay for external servers
+        if "already exists" in response.text.lower():
+            logger.warning(f"User {username} already exists, trying different username")
+            # Try with a more unique identifier
+            username = f"testuser{timestamp}_{fake.random_int(1000, 9999)}"
+            email = f"test{timestamp}_{fake.random_int(1000, 9999)}@example.com"
+            response = requests.post(
+                f"{url}auth/register",
+                json={
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "email": email,
+                    "username": username,
+                    "password": password,
+                    "confirm_password": password
+                }
+            )
+            if response.status_code not in [200, 201]:
+                raise Exception(f"Failed to create test user: {response.status_code} - {response.text}")
+        else:
+            raise Exception(f"Failed to create test user: {response.status_code} - {response.text}")
+    
+    return {
+        "username": username,
+        "email": email,
+        "password": password,
+        "first_name": "Test",
+        "last_name": "User"
+    }
 
 # ======================================================================================
 # Pytest Command-Line Options
