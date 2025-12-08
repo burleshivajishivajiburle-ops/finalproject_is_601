@@ -83,24 +83,35 @@ Faker.seed(12345)
 
 # Configure test engine with SQLite-specific options to handle concurrent access
 from sqlalchemy import create_engine, event
-test_engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={
-        "check_same_thread": False,
-        "timeout": 30,
-        "isolation_level": None  # Autocommit mode
-    },
-    poolclass=None,  # Disable pooling for tests to avoid connection issues
-    echo=False
-)
+from sqlalchemy.engine import make_url
+from sqlalchemy.pool import StaticPool
 
-# Enable WAL mode for better concurrency
-@event.listens_for(test_engine, "connect")
-def set_sqlite_pragma(dbapi_conn, connection_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
-    cursor.close()
+database_url = settings.DATABASE_URL
+url = make_url(database_url)
+engine_kwargs = {"echo": False}
+
+if url.get_backend_name() == "sqlite":
+    engine_kwargs.update(
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 30,
+            "isolation_level": None  # Autocommit mode
+        },
+        poolclass=StaticPool  # Disable pooling for in-memory/SQLite tests
+    )
+else:
+    engine_kwargs["pool_pre_ping"] = True
+
+test_engine = create_engine(database_url, **engine_kwargs)
+
+if url.get_backend_name() == "sqlite":
+    # Enable WAL mode for better concurrency
+    @event.listens_for(test_engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")  # 30 second timeout
+        cursor.close()
 
 TestingSessionLocal = get_sessionmaker(engine=test_engine)
 
