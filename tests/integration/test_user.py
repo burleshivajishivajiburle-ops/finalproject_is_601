@@ -62,12 +62,21 @@ def test_session_handling(db_session):
     initial_count = db_session.query(User).count()
     logger.info(f"Initial user count before test_session_handling: {initial_count}")
 
+    # Use faker to generate unique emails
+    from faker import Faker
+    fake = Faker()
+    unique_email1 = fake.unique.email()
+    unique_username1 = fake.unique.user_name()
+    unique_username2 = fake.unique.user_name()
+    unique_email3 = fake.unique.email()
+    unique_username3 = fake.unique.user_name()
+
     # Create and commit user1.
     user1 = User(
         first_name="User",
         last_name="One",
-        email="user1@example.com",
-        username="user1",
+        email=unique_email1,
+        username=unique_username1,
         password="hashed_password"
     )
     db_session.add(user1)
@@ -77,8 +86,8 @@ def test_session_handling(db_session):
     user2 = User(
         first_name="User",
         last_name="Two",
-        email="user1@example.com",  # Duplicate email
-        username="user2",
+        email=unique_email1,  # Duplicate email from user1
+        username=unique_username2,
         password="hashed_password"
     )
     db_session.add(user2)
@@ -92,8 +101,8 @@ def test_session_handling(db_session):
     user3 = User(
         first_name="User",
         last_name="Three",
-        email="user3@example.com",
-        username="user3",
+        email=unique_email3,
+        username=unique_username3,
         password="hashed_password"
     )
     db_session.add(user3)
@@ -221,7 +230,13 @@ def test_bulk_operations(db_session):
     Use --run-slow to enable this test.
     """
     users_data = [create_fake_user() for _ in range(10)]
-    users = [User(**data) for data in users_data]
+    # Hash passwords before creating users
+    from app.models.user import User as UserModel
+    users = []
+    for data in users_data:
+        hashed_password = UserModel.hash_password(data.pop("password"))
+        users.append(User(**data, password=hashed_password))
+    
     db_session.bulk_save_objects(users)
     db_session.commit()
     
