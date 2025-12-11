@@ -106,18 +106,15 @@ Coverage reports land in `htmlcov/index.html` when running with `pytest --cov`.
 4. Push the tagged image to Docker Hub **only if** tests pass
 
 ## Docker Hub Publishing
-Update `<<docker-hub-username>>` with your namespace.
 
 ```bash
 docker login
-docker build -t <<docker-hub-username>>/assignmentlmlm:latest .
-docker push <<docker-hub-username>>/assignmentlmlm:latest
+docker build -t shivajiburle/assignmentlm:latest .
+docker push shivajiburle/assignmentlm:latest
 ```
 
-The README should include the final Docker Hub link, e.g.
-```
-https://hub.docker.com/r/<your-username>/assignmentlmlm
-```
+Published image: <https://hub.docker.com/r/shivajiburle/assignmentlm>
+
 
 ## API Surface (summary)
 | Method | Endpoint                      | Description |
@@ -140,5 +137,4 @@ https://hub.docker.com/r/<your-username>/assignmentlmlm
 - **Playwright failures**: ensure the server is reachable at the `--base-url` used during tests and rerun `python -m playwright install` after Playwright upgrades.
 - **Login/profile JSON errors**: check FastAPI logs (e.g., `docker compose logs web -f`) to confirm migrations were applied.
 
-## License / Credits
-Course assignment project (“assignmentlmlm”) combining FastAPI + Docker best practices. Update this section if you need a specific license notice.
+
